@@ -46,6 +46,8 @@ return [
         'url' => env('JIRA_URL'),
         'username' => env('JIRA_USERNAME'),
         'token' => env('JIRA_TOKEN'),
+        'webhook_secret' => env('JIRA_WEBHOOK_SECRET'),
+        'webhook_username' => env('JIRA_WEBHOOK_USERNAME', 'jira-webhook'),
     ],
 
     'linear' => [
@@ -67,6 +69,7 @@ return [
     'github' => [
         'token' => env('GITHUB_TOKEN'),
         'organization' => env('GITHUB_ORGANIZATION'),
+        'webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
     ],
 
     'gitlab' => [

@@ -39,6 +39,7 @@ class Workflow extends Model
         'ticket_id',
         'state',
         'retries',
+        'meta',
     ];
 
     /**
@@ -49,6 +50,7 @@ class Workflow extends Model
     protected $casts = [
         'state' => 'string',
         'retries' => 'integer',
+        'meta' => 'array',
     ];
 
     /**
