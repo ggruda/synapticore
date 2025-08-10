@@ -28,8 +28,7 @@ final readonly class RepoProfileJson extends Data
         public array $tools,
         public array $manifests,
         public array $metadata,
-    ) {
-    }
+    ) {}
 
     /**
      * Get the primary language.

@@ -26,8 +26,7 @@ class RepoManager
 
     public function __construct(
         private readonly VcsProviderContract $vcsProvider,
-    ) {
-    }
+    ) {}
 
     /**
      * Clone repository for a ticket and create feature branch.
@@ -101,7 +100,7 @@ class RepoManager
      */
     public function getWorkspacePath(Ticket $ticket): string
     {
-        return Storage::path($this->getWorkspaceStoragePath($ticket) . '/repo');
+        return Storage::path($this->getWorkspaceStoragePath($ticket).'/repo');
     }
 
     /**
@@ -109,7 +108,7 @@ class RepoManager
      */
     private function getWorkspaceStoragePath(Ticket $ticket): string
     {
-        return self::WORKSPACE_BASE . '/' . $ticket->id;
+        return self::WORKSPACE_BASE.'/'.$ticket->id;
     }
 
     /**
@@ -137,14 +136,14 @@ class RepoManager
             'git',
             'clone',
             '--depth=1',
-            '--branch=' . escapeshellarg($branch),
+            '--branch='.escapeshellarg($branch),
             $url,
             $destination,
         ];
 
         $result = Process::timeout(300)->run(implode(' ', $command));
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new CloneFailedException(
                 "Git clone failed: {$result->errorOutput()}"
             );
@@ -166,7 +165,7 @@ class RepoManager
         $result = Process::path($repoPath)
             ->run("git checkout -b {$branchName}");
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new \RuntimeException(
                 "Failed to create branch {$branchName}: {$result->errorOutput()}"
             );
@@ -206,7 +205,7 @@ class RepoManager
         }
 
         // Create .synapticore-allowed file
-        $allowedFile = $repoPath . '/.synapticore-allowed';
+        $allowedFile = $repoPath.'/.synapticore-allowed';
         file_put_contents($allowedFile, implode("\n", $allowedPaths));
 
         Log::info('Applied path restrictions', [
@@ -232,11 +231,11 @@ class RepoManager
         foreach ($allowedPaths as $pattern) {
             // Handle wildcard patterns
             if (str_contains($pattern, '*')) {
-                $regex = '/^' . str_replace(
+                $regex = '/^'.str_replace(
                     ['/', '*'],
                     ['\/', '.*'],
                     $pattern
-                ) . '$/';
+                ).'$/';
 
                 if (preg_match($regex, $filePath)) {
                     return true;
@@ -267,13 +266,13 @@ class RepoManager
         $result = Process::path($workspacePath)
             ->run('git diff --name-only HEAD');
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             return [];
         }
 
         $files = array_filter(
             array_map('trim', explode("\n", $result->output())),
-            fn ($file) => !empty($file)
+            fn ($file) => ! empty($file)
         );
 
         return array_values($files);
@@ -287,7 +286,7 @@ class RepoManager
         // Stage all changes
         $result = Process::path($workspacePath)->run('git add -A');
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new \RuntimeException("Failed to stage changes: {$result->errorOutput()}");
         }
 
@@ -295,7 +294,7 @@ class RepoManager
         $result = Process::path($workspacePath)
             ->run(['git', 'commit', '-m', $message]);
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new \RuntimeException("Failed to commit: {$result->errorOutput()}");
         }
 
@@ -314,7 +313,7 @@ class RepoManager
             ->timeout(120)
             ->run("git push origin {$branchName}");
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new \RuntimeException("Failed to push branch: {$result->errorOutput()}");
         }
 

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+# Build Docker runner images for all languages
+set -e
+
+echo "🐳 Building Docker runner images..."
+
+RUNNERS_DIR="runners"
+LANGUAGES=("php" "node" "python" "go" "java")
+
+for lang in "${LANGUAGES[@]}"; do
+    if [ -d "$RUNNERS_DIR/$lang" ]; then
+        echo "Building runner for $lang..."
+        docker build -t "local/runner-$lang:latest" "$RUNNERS_DIR/$lang"
+        echo "✅ Built local/runner-$lang:latest"
+    else
+        echo "⚠️  No Dockerfile found for $lang"
+    fi
+done
+
+echo "✅ All runner images built successfully!"
+
+# List built images
+echo ""
+echo "Available runner images:"
+docker images | grep "local/runner-" || echo "No local runner images found"
