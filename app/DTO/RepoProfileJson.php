@@ -9,7 +9,7 @@ use Spatie\LaravelData\Data;
 /**
  * Repository profile containing detected tools and commands.
  */
-final readonly class RepoProfileJson extends Data
+final class RepoProfileJson extends Data
 {
     /**
      * @param  array<string, string>  $commands  Available commands (lint, format, test, etc.)

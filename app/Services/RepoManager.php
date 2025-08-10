@@ -43,8 +43,8 @@ class RepoManager
         // Clean up existing workspace
         $this->cleanWorkspace($ticket);
 
-        // Create workspace directory
-        Storage::makeDirectory($this->getWorkspaceStoragePath($ticket));
+        // Create workspace directory (use local disk)
+        Storage::disk('local')->makeDirectory($this->getWorkspaceStoragePath($ticket));
 
         try {
             // Get repository URL
@@ -89,8 +89,9 @@ class RepoManager
     {
         $path = $this->getWorkspaceStoragePath($ticket);
 
-        if (Storage::exists($path)) {
-            Storage::deleteDirectory($path);
+        // Use local disk for workspaces
+        if (Storage::disk('local')->exists($path)) {
+            Storage::disk('local')->deleteDirectory($path);
             Log::info('Cleaned workspace', ['ticket_id' => $ticket->id]);
         }
     }
@@ -100,7 +101,7 @@ class RepoManager
      */
     public function getWorkspacePath(Ticket $ticket): string
     {
-        return Storage::path($this->getWorkspaceStoragePath($ticket).'/repo');
+        return Storage::disk('local')->path($this->getWorkspaceStoragePath($ticket).'/repo');
     }
 
     /**

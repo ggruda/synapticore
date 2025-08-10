@@ -17,12 +17,10 @@ final class ProcessResultDto extends Data
         public readonly int $exitCode,
         public readonly string $stdout,
         public readonly string $stderr,
-        public readonly float $executionTime,
-        public readonly string $command,
-        public readonly string $workspace,
+        public readonly int $duration,
         public readonly bool $timedOut = false,
-        public readonly array $environment = [],
-        public readonly ?string $logPath = null,
+        public readonly ?int $signal = null,
+        public readonly array $logPaths = [],
     ) {}
 
     /**

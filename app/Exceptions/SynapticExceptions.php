@@ -41,3 +41,13 @@ class TimeoutException extends SynapticException {}
 
 // Notification Exceptions
 class NotificationFailedException extends SynapticException {}
+
+// Validation Exceptions
+class ValidationFailedException extends SynapticException {}
+
+// Security Exceptions
+class CommandBlockedException extends SynapticException {}
+class PathViolationException extends SynapticException {}
+
+// Implementation Exception
+class NotImplementedException extends SynapticException {}

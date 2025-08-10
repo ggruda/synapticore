@@ -1,26 +1,46 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-# Build Docker runner images for all languages
+# Build all runner Docker images with security features
+
 set -e
 
-echo "🐳 Building Docker runner images..."
+echo "🔨 Building Runner Images with Security Features"
+echo "================================================"
 
 RUNNERS_DIR="runners"
-LANGUAGES=("php" "node" "python" "go" "java")
+IMAGES_BUILT=0
 
-for lang in "${LANGUAGES[@]}"; do
-    if [ -d "$RUNNERS_DIR/$lang" ]; then
-        echo "Building runner for $lang..."
-        docker build -t "local/runner-$lang:latest" "$RUNNERS_DIR/$lang"
-        echo "✅ Built local/runner-$lang:latest"
-    else
-        echo "⚠️  No Dockerfile found for $lang"
+# Copy security.conf to each runner directory
+echo "📋 Copying security configuration..."
+for dir in "$RUNNERS_DIR"/*/ ; do
+    if [ -d "$dir" ] && [ "$dir" != "$RUNNERS_DIR/base/" ]; then
+        cp "$RUNNERS_DIR/base/security.conf" "$dir/security.conf" 2>/dev/null || true
     fi
 done
 
-echo "✅ All runner images built successfully!"
+# Build each runner image
+for dir in "$RUNNERS_DIR"/*/ ; do
+    if [ -d "$dir" ] && [ "$dir" != "$RUNNERS_DIR/base/" ] && [ -f "$dir/Dockerfile" ]; then
+        runner_name=$(basename "$dir")
+        echo ""
+        echo "🐳 Building $runner_name runner..."
+        
+        if docker build -t "synapticore/runner:$runner_name" "$dir"; then
+            echo "✅ Successfully built $runner_name runner"
+            ((IMAGES_BUILT++))
+        else
+            echo "❌ Failed to build $runner_name runner"
+        fi
+    fi
+done
 
-# List built images
 echo ""
-echo "Available runner images:"
-docker images | grep "local/runner-" || echo "No local runner images found"
+echo "================================================"
+echo "✨ Built $IMAGES_BUILT runner images"
+echo ""
+echo "Available runners:"
+docker images | grep "synapticore/runner" || echo "No runner images found"
+echo ""
+echo "To test runners:"
+echo "  docker compose -f runners/docker-compose.yml up"
+echo "  php artisan runner:test-security"

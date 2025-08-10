@@ -91,10 +91,40 @@ class Ticket extends Model
     }
 
     /**
+     * Get all pull requests for the ticket.
+     */
+    public function pullRequests(): HasMany
+    {
+        return $this->hasMany(PullRequest::class);
+    }
+
+    /**
      * Get the worklogs for the ticket.
      */
     public function worklogs(): HasMany
     {
         return $this->hasMany(Worklog::class);
+    }
+
+    /**
+     * Convert to DTO for API usage.
+     */
+    public function toDto(): \App\DTO\TicketDto
+    {
+        return new \App\DTO\TicketDto(
+            externalKey: $this->external_key,
+            title: $this->title,
+            body: $this->body,
+            status: $this->status,
+            priority: $this->priority,
+            source: $this->source,
+            labels: $this->labels ?? [],
+            acceptanceCriteria: $this->acceptance_criteria ?? [],
+            meta: $this->meta ?? [],
+            assignee: $this->assignee,
+            reporter: $this->reporter,
+            storyPoints: $this->story_points,
+            sprint: $this->sprint,
+        );
     }
 }

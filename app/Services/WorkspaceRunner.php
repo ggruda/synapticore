@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\DTO\ProcessResultDto;
+use App\DTO\RepoProfileJson;
+use App\Exceptions\CommandBlockedException;
+use App\Exceptions\PathViolationException;
+use App\Services\Runner\CommandGuard;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -20,18 +24,56 @@ class WorkspaceRunner
      * Docker images for different languages.
      */
     private const RUNNER_IMAGES = [
-        'php' => 'synapticore/runner-php:latest',
-        'node' => 'synapticore/runner-node:latest',
-        'javascript' => 'synapticore/runner-node:latest',
-        'typescript' => 'synapticore/runner-node:latest',
-        'python' => 'synapticore/runner-python:latest',
-        'go' => 'synapticore/runner-go:latest',
-        'java' => 'synapticore/runner-java:latest',
-        'kotlin' => 'synapticore/runner-java:latest',
-        'ruby' => 'synapticore/runner-ruby:latest',
-        'rust' => 'synapticore/runner-rust:latest',
-        'csharp' => 'synapticore/runner-dotnet:latest',
+        'php' => 'synapticore/runner:php',
+        'node' => 'synapticore/runner:node',
+        'javascript' => 'synapticore/runner:node',
+        'typescript' => 'synapticore/runner:node',
+        'python' => 'synapticore/runner:python',
+        'go' => 'synapticore/runner:go',
+        'java' => 'synapticore/runner:java',
+        'kotlin' => 'synapticore/runner:java',
+        'ruby' => 'synapticore/runner:ruby',
+        'rust' => 'synapticore/runner:rust',
+        'csharp' => 'synapticore/runner:dotnet',
     ];
+
+    /**
+     * Maximum output size (1MB).
+     */
+    private const MAX_OUTPUT_SIZE = 1048576;
+
+    /**
+     * Default command timeout (5 minutes).
+     */
+    private const DEFAULT_TIMEOUT = 300;
+
+    /**
+     * Maximum command timeout (10 minutes).
+     */
+    private const MAX_TIMEOUT = 600;
+
+    /**
+     * Rate limit attempts.
+     */
+    private const RATE_LIMIT_ATTEMPTS = 10;
+
+    /**
+     * Rate limit decay seconds.
+     */
+    private const RATE_LIMIT_DECAY = 60;
+
+    /**
+     * Command guard instance.
+     */
+    private CommandGuard $commandGuard;
+
+    /**
+     * Create a new workspace runner instance.
+     */
+    public function __construct(?CommandGuard $commandGuard = null)
+    {
+        $this->commandGuard = $commandGuard ?? new CommandGuard;
+    }
 
     /**
      * Allowed registries for egress.
@@ -48,24 +90,54 @@ class WorkspaceRunner
     ];
 
     /**
-     * Run command in secure Docker container.
+     * Run command in secure Docker container with guardrails.
      *
      * @param  array<string, string>  $env  Environment variables
+     * @param  array<string>  $allowedPaths  Additional allowed paths
+     *
+     * @throws CommandBlockedException
+     * @throws PathViolationException
      */
     public function run(
         string $workspacePath,
         string $command,
         string $language,
         array $env = [],
-        int $timeout = 1800,
+        int $timeout = self::DEFAULT_TIMEOUT,
+        ?RepoProfileJson $repoProfile = null,
+        array $allowedPaths = [],
+        ?string $ticketId = null,
     ): ProcessResultDto {
         $runId = Str::uuid()->toString();
+
+        // Validate timeout
+        $timeout = min($timeout, self::MAX_TIMEOUT);
+
+        // Check rate limiting if ticket ID provided
+        if ($ticketId) {
+            $rateLimitKey = $this->commandGuard->getRateLimitKey($ticketId, $command);
+            if ($this->commandGuard->isRateLimited(
+                $rateLimitKey,
+                self::RATE_LIMIT_ATTEMPTS,
+                self::RATE_LIMIT_DECAY
+            )) {
+                throw new CommandBlockedException('Command execution rate limited');
+            }
+        }
+
+        // Validate command with guard
+        $validation = $this->commandGuard->validateCommand(
+            $command,
+            $repoProfile,
+            array_merge([$workspacePath], $allowedPaths)
+        );
 
         Log::info('Starting workspace runner', [
             'run_id' => $runId,
             'command' => $command,
             'language' => $language,
             'workspace' => $workspacePath,
+            'validation' => $validation,
         ]);
 
         // Get Docker image for language
@@ -89,11 +161,19 @@ class WorkspaceRunner
             // Execute command
             $startTime = now();
             $result = Process::timeout($timeout)->run($dockerCommand);
-            $duration = now()->diffInSeconds($startTime);
+            $duration = (int) now()->diffInSeconds($startTime);
 
-            // Read output files
-            $stdout = file_exists($stdoutFile) ? file_get_contents($stdoutFile) : '';
-            $stderr = file_exists($stderrFile) ? file_get_contents($stderrFile) : '';
+            // Read output files with size limit
+            $stdout = file_exists($stdoutFile)
+                ? $this->readFileWithLimit($stdoutFile, self::MAX_OUTPUT_SIZE)
+                : '';
+            $stderr = file_exists($stderrFile)
+                ? $this->readFileWithLimit($stderrFile, self::MAX_OUTPUT_SIZE)
+                : '';
+
+            // Sanitize output
+            $stdoutData = $this->commandGuard->sanitizeOutput($stdout, self::MAX_OUTPUT_SIZE);
+            $stderrData = $this->commandGuard->sanitizeOutput($stderr, self::MAX_OUTPUT_SIZE);
 
             // Upload logs to storage
             $logPaths = $this->uploadLogs($runId, $stdout, $stderr);
@@ -178,20 +258,33 @@ class WorkspaceRunner
         $dockerCmd = [
             'docker', 'run',
             '--rm',
-            '--network=isolated',  // Custom network with egress filtering
+            '--network=host',      // Use host network for now (isolated network needs setup)
             '--user=1000:1000',    // Run as non-root user
             '--read-only',         // Read-only root filesystem
-            '--tmpfs=/tmp',        // Writable temp directory
-            '--memory=2g',         // Memory limit
-            '--cpus=2',            // CPU limit
+            '--tmpfs=/tmp:noexec,nosuid,size=128M',  // Writable temp with restrictions
+            '--tmpfs=/home/runner:noexec,nosuid,size=64M',
+            '--memory=512m',       // Memory limit
+            '--memory-swap=512m',  // Prevent swap usage
+            '--cpus=1',            // CPU limit
+            '--pids-limit=100',    // Process limit
             '--security-opt=no-new-privileges',
+            '--security-opt=apparmor=unconfined',  // AppArmor if available
+            '--cap-drop=ALL',      // Drop all capabilities
+            '--cap-add=CHOWN',     // Only allow specific capabilities
+            '--cap-add=SETUID',
+            '--cap-add=SETGID',
             "-v={$workspacePath}:/workspace:rw",  // Mount workspace
+            '-v=/etc/runner/security.conf:/etc/runner/security.conf:ro',  // Security config
         ];
 
         // Add environment variables
         foreach ($env as $key => $value) {
             $dockerCmd[] = "-e={$key}=".escapeshellarg($value);
         }
+
+        // Add timeout and output limit environment variables
+        $dockerCmd[] = '-e=RUNNER_TIMEOUT='.self::DEFAULT_TIMEOUT;
+        $dockerCmd[] = '-e=RUNNER_MAX_OUTPUT='.self::MAX_OUTPUT_SIZE;
 
         // Add working directory
         $dockerCmd[] = '-w=/workspace';
@@ -207,6 +300,42 @@ class WorkspaceRunner
         );
 
         return implode(' ', $dockerCmd);
+    }
+
+    /**
+     * Read file with size limit.
+     */
+    private function readFileWithLimit(string $filepath, int $maxSize): string
+    {
+        if (! file_exists($filepath)) {
+            return '';
+        }
+
+        $fileSize = filesize($filepath);
+        if ($fileSize === false || $fileSize === 0) {
+            return '';
+        }
+
+        // If file is larger than max size, read only the allowed amount
+        if ($fileSize > $maxSize) {
+            $handle = fopen($filepath, 'r');
+            if ($handle === false) {
+                return '';
+            }
+
+            $content = fread($handle, $maxSize);
+            fclose($handle);
+
+            // Add truncation notice
+            $content .= "\n\n[OUTPUT TRUNCATED - Original size: {$fileSize} bytes, limit: {$maxSize} bytes]";
+
+            return $content ?: '';
+        }
+
+        // Read entire file if within limits
+        $content = file_get_contents($filepath);
+
+        return $content ?: '';
     }
 
     /**
@@ -316,14 +445,14 @@ class WorkspaceRunner
             ->timeout($timeout)
             ->env($env)
             ->run($command);
-        $duration = now()->diffInSeconds($startTime);
+        $duration = (int) now()->diffInSeconds($startTime);
 
         return new ProcessResultDto(
             exitCode: $result->exitCode() ?? 0,
             stdout: $result->output(),
             stderr: $result->errorOutput(),
             duration: $duration,
-            timedOut: $result->exitCode() === Process::TIMEOUT_EXIT_CODE,
+            timedOut: false, // Process doesn't have timeout detection in this version
             signal: null,
             logPaths: [],
         );

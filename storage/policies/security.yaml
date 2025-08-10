@@ -1,0 +1,196 @@
+# Security Policy Configuration
+# Defines security scanning tools and their configurations
+
+version: "1.0"
+name: "Security Policy"
+description: "Security scanning and vulnerability detection policies"
+
+tools:
+  # Secret scanning
+  gitleaks:
+    enabled: true
+    version: "8.18.0"
+    config: ".gitleaks.toml"
+    fail_on_findings: true
+    scan_depth: 50  # Number of commits to scan
+    excluded_paths:
+      - "*.min.js"
+      - "*.min.css"
+      - "vendor/**"
+      - "node_modules/**"
+    custom_rules:
+      - name: "Private Key"
+        regex: "-----BEGIN (RSA|EC|DSA|OPENSSH) PRIVATE KEY-----"
+        severity: "critical"
+      - name: "API Key"
+        regex: "(?i)(api[_-]?key|apikey)\\s*[:=]\\s*['\"]?([a-zA-Z0-9_-]{32,})['\"]?"
+        severity: "high"
+
+  # Container scanning
+  trivy:
+    enabled: true
+    version: "0.48.0"
+    scan_types:
+      - "vuln"
+      - "config"
+      - "secret"
+    severity_levels:
+      - "CRITICAL"
+      - "HIGH"
+      - "MEDIUM"
+    ignore_unfixed: false
+    exit_code: 1
+    timeout: "5m"
+    skip_files:
+      - "*.test.js"
+      - "*.spec.ts"
+
+  # Python security
+  bandit:
+    enabled: true
+    version: "1.7.5"
+    severity_level: "medium"
+    confidence_level: "medium"
+    recursive: true
+    skip_files:
+      - "*_test.py"
+      - "*/test_*.py"
+    tests_to_run:
+      - "B201"  # Flask debug mode
+      - "B601"  # Shell injection
+      - "B602"  # Subprocess with shell=True
+      - "B608"  # SQL injection
+      - "B703"  # Django XSS
+
+  # Node.js security
+  npm_audit:
+    enabled: true
+    audit_level: "moderate"
+    production_only: false
+    fix_available: true
+    force_fix: false
+
+  # PHP security
+  composer_audit:
+    enabled: true
+    format: "json"
+    locked: true  # Only check composer.lock
+
+  # SAST scanning
+  sonarqube:
+    enabled: false  # Optional, requires SonarQube server
+    server_url: "${SONARQUBE_URL}"
+    token: "${SONARQUBE_TOKEN}"
+    project_key: "synapticore"
+    quality_gate_wait: true
+    timeout: "300"
+
+  # Dependency scanning
+  snyk:
+    enabled: false  # Optional, requires Snyk account
+    token: "${SNYK_TOKEN}"
+    severity_threshold: "medium"
+    fail_on: "all"
+    test_dev_deps: true
+
+# Security policies
+policies:
+  # Critical files that require extra review
+  sensitive_files:
+    - "**/*auth*"
+    - "**/*login*"
+    - "**/*password*"
+    - "**/*token*"
+    - "**/*secret*"
+    - "**/*key*"
+    - "**/config/*"
+    - "**/.env*"
+
+  # Forbidden patterns
+  forbidden_patterns:
+    - pattern: "eval\\("
+      message: "Use of eval() is forbidden for security reasons"
+      severity: "critical"
+    - pattern: "exec\\("
+      message: "Direct exec() calls are not allowed"
+      severity: "high"
+    - pattern: "system\\("
+      message: "System calls must be reviewed"
+      severity: "high"
+    - pattern: "TODO.*security"
+      message: "Security TODOs must be resolved"
+      severity: "medium"
+
+  # Required security headers (for web apps)
+  required_headers:
+    - "X-Content-Type-Options: nosniff"
+    - "X-Frame-Options: DENY"
+    - "X-XSS-Protection: 1; mode=block"
+    - "Strict-Transport-Security"
+    - "Content-Security-Policy"
+
+  # Compliance checks
+  compliance:
+    pci_dss:
+      enabled: false
+      checks:
+        - "no_card_data_in_logs"
+        - "encryption_at_rest"
+        - "secure_transmission"
+    gdpr:
+      enabled: false
+      checks:
+        - "data_minimization"
+        - "right_to_deletion"
+        - "consent_management"
+    hipaa:
+      enabled: false
+      checks:
+        - "phi_encryption"
+        - "access_controls"
+        - "audit_logging"
+
+# Vulnerability management
+vulnerability_management:
+  auto_fix:
+    enabled: true
+    max_severity: "medium"  # Only auto-fix up to this severity
+    require_tests: true
+    
+  reporting:
+    format: "sarif"  # SARIF format for GitHub integration
+    output_path: "security-results.sarif"
+    
+  exceptions:
+    # Known false positives or accepted risks
+    - id: "CVE-2023-12345"
+      reason: "False positive in test files"
+      expires: "2024-12-31"
+    - id: "GHSA-abcd-efgh-ijkl"
+      reason: "Accepted risk, mitigated by WAF"
+      expires: "2024-06-30"
+
+# Incident response
+incident_response:
+  enabled: true
+  notification_channels:
+    - "security-team@example.com"
+    - "#security-alerts"
+  
+  severity_mapping:
+    critical:
+      sla_hours: 4
+      auto_rollback: true
+      notify_management: true
+    high:
+      sla_hours: 24
+      auto_rollback: false
+      notify_management: false
+    medium:
+      sla_hours: 72
+      auto_rollback: false
+      notify_management: false
+    low:
+      sla_hours: 168
+      auto_rollback: false
+      notify_management: false

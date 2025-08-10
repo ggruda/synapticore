@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+    
+    <!-- Local repository in temp directory -->
+    <localRepository>/tmp/.m2/repository</localRepository>
+    
+    <!-- Offline mode can be enabled for security -->
+    <offline>false</offline>
+    
+    <!-- Interactive mode disabled -->
+    <interactiveMode>false</interactiveMode>
+    
+    <!-- Use plugin registry -->
+    <usePluginRegistry>false</usePluginRegistry>
+    
+    <!-- Profiles -->
+    <profiles>
+        <profile>
+            <id>secure</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <!-- Security properties -->
+                <maven.wagon.http.ssl.insecure>false</maven.wagon.http.ssl.insecure>
+                <maven.wagon.http.ssl.allowall>false</maven.wagon.http.ssl.allowall>
+                <maven.wagon.http.ssl.ignore.validity.dates>false</maven.wagon.http.ssl.ignore.validity.dates>
+            </properties>
+            <repositories>
+                <repository>
+                    <id>central</id>
+                    <url>https://repo.maven.apache.org/maven2</url>
+                    <releases>
+                        <enabled>true</enabled>
+                        <checksumPolicy>fail</checksumPolicy>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>central</id>
+                    <url>https://repo.maven.apache.org/maven2</url>
+                    <releases>
+                        <enabled>true</enabled>
+                        <checksumPolicy>fail</checksumPolicy>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
+    
+    <!-- Active profiles -->
+    <activeProfiles>
+        <activeProfile>secure</activeProfile>
+    </activeProfiles>
+    
+    <!-- Mirrors (can be used to restrict to specific registries) -->
+    <mirrors>
+        <mirror>
+            <id>central-mirror</id>
+            <mirrorOf>*</mirrorOf>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </mirror>
+    </mirrors>
+    
+</settings>

@@ -42,4 +42,24 @@ class Patch extends Model
     {
         return $this->belongsTo(Ticket::class);
     }
+
+    /**
+     * Convert to PatchSummaryJson DTO.
+     */
+    public function toPatchSummaryJson(): \App\DTO\PatchSummaryJson
+    {
+        return new \App\DTO\PatchSummaryJson(
+            filesTouched: $this->files_touched ?? [],
+            diffStats: $this->diff_stats ?? ['additions' => 0, 'deletions' => 0],
+            riskScore: $this->risk_score,
+            summary: is_array($this->summary) ? ($this->summary['summary'] ?? '') : $this->summary,
+            breakingChanges: $this->summary['breaking_changes'] ?? false,
+            requiresMigration: $this->summary['requires_migration'] ?? false,
+            testCoverage: $this->summary['test_coverage'] ?? null,
+            metadata: [
+                'patch_id' => $this->id,
+                'created_at' => $this->created_at->toIso8601String(),
+            ],
+        );
+    }
 }

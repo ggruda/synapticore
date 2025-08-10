@@ -11,23 +11,14 @@ class Workflow extends Model
     use HasFactory;
 
     public const STATE_INGESTED = 'INGESTED';
-
     public const STATE_CONTEXT_READY = 'CONTEXT_READY';
-
     public const STATE_PLANNED = 'PLANNED';
-
     public const STATE_IMPLEMENTING = 'IMPLEMENTING';
-
     public const STATE_TESTING = 'TESTING';
-
     public const STATE_REVIEWING = 'REVIEWING';
-
     public const STATE_FIXING = 'FIXING';
-
     public const STATE_PR_CREATED = 'PR_CREATED';
-
     public const STATE_DONE = 'DONE';
-
     public const STATE_FAILED = 'FAILED';
 
     /**

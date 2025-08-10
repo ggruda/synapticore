@@ -8,8 +8,11 @@ use App\Contracts\TicketProviderContract;
 use App\DTO\TicketDto;
 use App\DTO\TicketWebhookEventDto;
 use App\Exceptions\NotImplementedException;
+use App\Exceptions\ProviderConnectionException;
 use DateTimeInterface;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Jira skeleton implementation of the ticket provider contract.
@@ -38,8 +41,146 @@ class JiraTicketProvider implements TicketProviderContract
      */
     public function addComment(string $externalKey, string $markdownBody): void
     {
-        // TODO: Implement comment addition via Jira API
-        throw new NotImplementedException('JiraTicketProvider::addComment() not yet implemented');
+        $maxRetries = 3;
+        $retryDelay = 1; // Start with 1 second
+
+        // Convert markdown to Jira's Atlassian Document Format (ADF)
+        $commentBody = $this->convertMarkdownToJiraFormat($markdownBody);
+
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $response = Http::withBasicAuth($this->username, $this->token)
+                    ->timeout(30)
+                    ->post("{$this->url}/rest/api/2/issue/{$externalKey}/comment", [
+                        'body' => $commentBody,
+                    ]);
+
+                if ($response->successful()) {
+                    Log::info('Successfully posted comment to Jira', [
+                        'issue' => $externalKey,
+                        'attempt' => $attempt,
+                        'comment_id' => $response->json('id'),
+                    ]);
+
+                    return;
+                }
+
+                // Check if it's a retryable error
+                if ($response->status() >= 500 || $response->status() === 429) {
+                    if ($attempt < $maxRetries) {
+                        Log::warning('Retryable error posting comment to Jira', [
+                            'issue' => $externalKey,
+                            'attempt' => $attempt,
+                            'status' => $response->status(),
+                            'error' => $response->body(),
+                        ]);
+
+                        // Exponential backoff
+                        sleep($retryDelay);
+                        $retryDelay *= 2;
+
+                        continue;
+                    }
+                }
+
+                // Non-retryable error
+                throw new ProviderConnectionException(
+                    "Failed to post comment to Jira issue {$externalKey}: ".
+                    "HTTP {$response->status()} - {$response->body()}"
+                );
+
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                // Network error - retry if attempts remain
+                if ($attempt < $maxRetries) {
+                    Log::warning('Network error posting comment to Jira, retrying...', [
+                        'issue' => $externalKey,
+                        'attempt' => $attempt,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    sleep($retryDelay);
+                    $retryDelay *= 2;
+
+                    continue;
+                }
+
+                throw new ProviderConnectionException(
+                    "Network error posting comment to Jira issue {$externalKey}: ".$e->getMessage(),
+                    0,
+                    $e
+                );
+            }
+        }
+
+        // If we get here, all retries failed
+        throw new ProviderConnectionException(
+            "Failed to post comment to Jira issue {$externalKey} after {$maxRetries} attempts"
+        );
+    }
+
+    /**
+     * Convert markdown to Jira's format.
+     */
+    private function convertMarkdownToJiraFormat(string $markdown): string
+    {
+        // Jira uses a simplified wiki markup or ADF (Atlassian Document Format)
+        // For now, we'll use the simple text format which Jira accepts
+        // In production, you'd want to convert to proper ADF JSON
+
+        // Basic markdown to Jira wiki conversions
+        $converted = $markdown;
+
+        // Headers
+        $converted = preg_replace('/^### (.+)$/m', 'h3. $1', $converted);
+        $converted = preg_replace('/^## (.+)$/m', 'h2. $1', $converted);
+        $converted = preg_replace('/^# (.+)$/m', 'h1. $1', $converted);
+
+        // Bold
+        $converted = preg_replace('/\*\*(.+?)\*\*/', '*$1*', $converted);
+
+        // Italic
+        $converted = preg_replace('/_(.+?)_/', '_$1_', $converted);
+
+        // Code blocks
+        $converted = preg_replace('/```(\w+)?\n(.*?)\n```/s', '{code:$1}$2{code}', $converted);
+
+        // Inline code
+        $converted = preg_replace('/`(.+?)`/', '{{$1}}', $converted);
+
+        // Links
+        $converted = preg_replace('/\[(.+?)\]\((.+?)\)/', '[$1|$2]', $converted);
+
+        // Unordered lists
+        $converted = preg_replace('/^- (.+)$/m', '* $1', $converted);
+
+        // Checkboxes
+        $converted = preg_replace('/^- \[ \] (.+)$/m', '* {-} $1', $converted);
+        $converted = preg_replace('/^- \[x\] (.+)$/m', '* {+} $1', $converted);
+
+        // Emojis to Jira equivalents (common ones)
+        $emojiMap = [
+            '✅' => '(/)',
+            '❌' => '(x)',
+            '⚠️' => '(!)',
+            '📝' => '(i)',
+            '🔗' => '(link)',
+            '⏱️' => '(clock)',
+            '🤖' => '(robot)',
+            '🧪' => '(test)',
+            '📋' => '(clipboard)',
+            '📦' => '(package)',
+            '🟢' => '(green)',
+            '🟡' => '(yellow)',
+            '🟠' => '(orange)',
+            '🔴' => '(red)',
+            '⚪' => '(gray)',
+        ];
+
+        foreach ($emojiMap as $emoji => $jira) {
+            $converted = str_replace($emoji, $jira, $converted);
+        }
+
+        return $converted;
     }
 
     /**

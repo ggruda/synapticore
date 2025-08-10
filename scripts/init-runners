@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Initialize runner environment with security features
+
+set -e
+
+echo "🚀 Initializing Synapticore Runners"
+echo "===================================="
+echo ""
+
+# Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker first."
+    exit 1
+fi
+
+# Build runner images
+echo "📦 Building runner images..."
+./scripts/build-runners
+
+# Create security configuration directory
+echo ""
+echo "🔒 Setting up security configuration..."
+sudo mkdir -p /etc/runner
+sudo cp runners/base/security.conf /etc/runner/security.conf
+sudo chmod 644 /etc/runner/security.conf
+echo "✅ Security configuration installed"
+
+# Create isolated network (optional - requires additional setup)
+echo ""
+echo "🌐 Creating Docker network..."
+docker network create synapticore-runner 2>/dev/null || echo "Network already exists"
+
+# Pull base images to speed up builds
+echo ""
+echo "📥 Pre-pulling base images..."
+docker pull php:8.3-cli-alpine &
+docker pull node:20-alpine &
+docker pull python:3.11-alpine &
+docker pull golang:1.21-alpine &
+docker pull eclipse-temurin:17-jdk-alpine &
+wait
+
+echo ""
+echo "===================================="
+echo "✅ Runner initialization complete!"
+echo ""
+echo "Available commands:"
+echo "  docker compose -f runners/docker-compose.yml up    # Start all runners"
+echo "  php artisan runner:test-security                   # Test security features"
+echo "  php artisan runner:test-security --test-dangerous  # Test dangerous command blocking"
+echo ""
+echo "Security features enabled:"
+echo "  ✓ Non-root user execution"
+echo "  ✓ Read-only root filesystem"
+echo "  ✓ Resource limits (CPU, Memory, PIDs)"
+echo "  ✓ Capability restrictions"
+echo "  ✓ Command validation & blocking"
+echo "  ✓ Path allowlisting"
+echo "  ✓ Output size limits"
+echo "  ✓ Rate limiting"

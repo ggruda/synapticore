@@ -1,0 +1,187 @@
+version: '3.8'
+
+# Docker Compose for testing runner containers with security features
+
+services:
+  php-runner:
+    build:
+      context: ./php
+      dockerfile: Dockerfile
+    image: synapticore/runner:php
+    container_name: synapticore-php-runner
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=128M
+      - /home/runner:noexec,nosuid,size=64M
+    volumes:
+      - ./workspace:/workspace:rw
+      - ./base/security.conf:/etc/runner/security.conf:ro
+    environment:
+      - RUNNER_TIMEOUT=300
+      - RUNNER_MAX_OUTPUT=1048576
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpu_quota: 100000
+    cpu_period: 100000
+    pids_limit: 100
+    networks:
+      - runner-network
+
+  node-runner:
+    build:
+      context: ./node
+      dockerfile: Dockerfile
+    image: synapticore/runner:node
+    container_name: synapticore-node-runner
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=128M
+      - /home/node:noexec,nosuid,size=64M
+    volumes:
+      - ./workspace:/workspace:rw
+      - ./base/security.conf:/etc/runner/security.conf:ro
+    environment:
+      - RUNNER_TIMEOUT=300
+      - RUNNER_MAX_OUTPUT=1048576
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpu_quota: 100000
+    cpu_period: 100000
+    pids_limit: 100
+    networks:
+      - runner-network
+
+  python-runner:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    image: synapticore/runner:python
+    container_name: synapticore-python-runner
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=128M
+      - /home/runner:noexec,nosuid,size=64M
+    volumes:
+      - ./workspace:/workspace:rw
+      - ./base/security.conf:/etc/runner/security.conf:ro
+    environment:
+      - RUNNER_TIMEOUT=300
+      - RUNNER_MAX_OUTPUT=1048576
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpu_quota: 100000
+    cpu_period: 100000
+    pids_limit: 100
+    networks:
+      - runner-network
+
+  go-runner:
+    build:
+      context: ./go
+      dockerfile: Dockerfile
+    image: synapticore/runner:go
+    container_name: synapticore-go-runner
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=128M
+      - /home/runner:noexec,nosuid,size=64M
+      - /go/pkg:noexec,nosuid,size=256M
+    volumes:
+      - ./workspace:/workspace:rw
+      - ./base/security.conf:/etc/runner/security.conf:ro
+    environment:
+      - RUNNER_TIMEOUT=300
+      - RUNNER_MAX_OUTPUT=1048576
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpu_quota: 100000
+    cpu_period: 100000
+    pids_limit: 100
+    networks:
+      - runner-network
+
+  java-runner:
+    build:
+      context: ./java
+      dockerfile: Dockerfile
+    image: synapticore/runner:java
+    container_name: synapticore-java-runner
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=256M
+      - /home/runner:noexec,nosuid,size=64M
+    volumes:
+      - ./workspace:/workspace:rw
+      - ./base/security.conf:/etc/runner/security.conf:ro
+      - ./java/maven-settings.xml:/tmp/.m2/settings.xml:ro
+    environment:
+      - RUNNER_TIMEOUT=300
+      - RUNNER_MAX_OUTPUT=1048576
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpu_quota: 100000
+    cpu_period: 100000
+    pids_limit: 100
+    networks:
+      - runner-network
+
+networks:
+  runner-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+    driver_opts:
+      com.docker.network.bridge.name: synapticore-runner
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"

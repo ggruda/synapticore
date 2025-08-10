@@ -1,0 +1,407 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://synapticore.ai/schemas/patch/v1",
+    "title": "Synapticore Patch Summary Schema v1",
+    "description": "Schema for patch summary validation including files touched, risk assessment, and test strategy",
+    "type": "object",
+    "required": ["version", "ticket_id", "summary", "files_touched", "risk", "test_strategy", "statistics"],
+    "properties": {
+        "version": {
+            "type": "string",
+            "const": "1.0",
+            "description": "Schema version"
+        },
+        "ticket_id": {
+            "type": "string",
+            "pattern": "^[A-Z]{2,10}-[0-9]{1,8}$",
+            "description": "External ticket identifier"
+        },
+        "summary": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 1000,
+            "description": "Summary of changes made"
+        },
+        "files_touched": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "List of files modified in the patch",
+            "items": {
+                "type": "object",
+                "required": ["path", "change_type", "lines_added", "lines_removed"],
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_/\\-\\.]+$",
+                        "description": "File path relative to repository root"
+                    },
+                    "change_type": {
+                        "type": "string",
+                        "enum": ["added", "modified", "removed", "renamed"],
+                        "description": "Type of change to the file"
+                    },
+                    "lines_added": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Number of lines added"
+                    },
+                    "lines_removed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Number of lines removed"
+                    },
+                    "changes": {
+                        "type": "array",
+                        "description": "Detailed changes made to the file",
+                        "items": {
+                            "type": "object",
+                            "required": ["type", "description"],
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "function_added",
+                                        "function_modified",
+                                        "function_removed",
+                                        "class_added",
+                                        "class_modified",
+                                        "class_removed",
+                                        "method_added",
+                                        "method_modified",
+                                        "method_removed",
+                                        "property_added",
+                                        "property_modified",
+                                        "property_removed",
+                                        "import_added",
+                                        "import_removed",
+                                        "config_changed",
+                                        "test_added",
+                                        "test_modified",
+                                        "documentation_updated",
+                                        "refactoring",
+                                        "bug_fix",
+                                        "other"
+                                    ],
+                                    "description": "Type of structural change"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "maxLength": 200,
+                                    "description": "Brief description of the change"
+                                },
+                                "line_range": {
+                                    "type": "object",
+                                    "properties": {
+                                        "start": {
+                                            "type": "integer",
+                                            "minimum": 1
+                                        },
+                                        "end": {
+                                            "type": "integer",
+                                            "minimum": 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "risk": {
+            "type": "object",
+            "required": ["level", "score", "factors"],
+            "description": "Risk assessment of the patch",
+            "properties": {
+                "level": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "critical"],
+                    "description": "Overall risk level"
+                },
+                "score": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Numerical risk score (0-100)"
+                },
+                "factors": {
+                    "type": "array",
+                    "description": "Risk factors identified",
+                    "items": {
+                        "type": "object",
+                        "required": ["type", "severity", "description"],
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "database_migration",
+                                    "api_breaking_change",
+                                    "security_vulnerability",
+                                    "performance_degradation",
+                                    "data_loss_potential",
+                                    "external_dependency_change",
+                                    "insufficient_test_coverage",
+                                    "complex_logic_change",
+                                    "configuration_change",
+                                    "authentication_change",
+                                    "authorization_change",
+                                    "critical_path_modification",
+                                    "backward_compatibility",
+                                    "large_changeset"
+                                ]
+                            },
+                            "severity": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "critical"]
+                            },
+                            "description": {
+                                "type": "string",
+                                "maxLength": 500
+                            },
+                            "mitigation": {
+                                "type": "string",
+                                "maxLength": 500,
+                                "description": "Suggested mitigation strategy"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "test_strategy": {
+            "type": "object",
+            "required": ["approach", "coverage", "tests_added", "tests_modified"],
+            "description": "Testing strategy for the patch",
+            "properties": {
+                "approach": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 1000,
+                    "description": "Description of testing approach"
+                },
+                "coverage": {
+                    "type": "object",
+                    "description": "Test coverage information",
+                    "properties": {
+                        "before": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100,
+                            "description": "Coverage percentage before patch"
+                        },
+                        "after": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100,
+                            "description": "Coverage percentage after patch"
+                        },
+                        "delta": {
+                            "type": "number",
+                            "minimum": -100,
+                            "maximum": 100,
+                            "description": "Change in coverage"
+                        }
+                    }
+                },
+                "tests_added": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of new tests added"
+                },
+                "tests_modified": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of existing tests modified"
+                },
+                "test_types": {
+                    "type": "array",
+                    "description": "Types of tests included",
+                    "items": {
+                        "type": "string",
+                        "enum": ["unit", "integration", "e2e", "performance", "security", "regression", "smoke"]
+                    }
+                },
+                "manual_testing_required": {
+                    "type": "boolean",
+                    "description": "Whether manual testing is required"
+                },
+                "manual_test_instructions": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "description": "Instructions for manual testing if required"
+                }
+            }
+        },
+        "statistics": {
+            "type": "object",
+            "required": ["total_files", "total_lines_added", "total_lines_removed", "net_lines_changed"],
+            "description": "Statistical summary of the patch",
+            "properties": {
+                "total_files": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Total number of files changed"
+                },
+                "total_lines_added": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Total lines added across all files"
+                },
+                "total_lines_removed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Total lines removed across all files"
+                },
+                "net_lines_changed": {
+                    "type": "integer",
+                    "description": "Net change in lines (added - removed)"
+                },
+                "languages": {
+                    "type": "array",
+                    "description": "Programming languages affected",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "file_types": {
+                    "type": "object",
+                    "description": "Breakdown by file type",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                }
+            }
+        },
+        "dependencies": {
+            "type": "object",
+            "description": "Dependency changes",
+            "properties": {
+                "added": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "version"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "version": {"type": "string"},
+                            "type": {
+                                "type": "string",
+                                "enum": ["production", "development", "peer", "optional"]
+                            }
+                        }
+                    }
+                },
+                "removed": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "version": {"type": "string"}
+                        }
+                    }
+                },
+                "updated": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "from", "to"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "from": {"type": "string"},
+                            "to": {"type": "string"}
+                        }
+                    }
+                }
+            }
+        },
+        "security": {
+            "type": "object",
+            "description": "Security analysis results",
+            "properties": {
+                "vulnerabilities_found": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "vulnerabilities_fixed": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "security_checks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["tool", "status"],
+                        "properties": {
+                            "tool": {
+                                "type": "string",
+                                "enum": ["gitleaks", "trivy", "bandit", "npm_audit", "composer_audit", "sonarqube", "snyk"]
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["passed", "failed", "warnings", "skipped"]
+                            },
+                            "findings": {
+                                "type": "integer",
+                                "minimum": 0
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "performance": {
+            "type": "object",
+            "description": "Performance impact analysis",
+            "properties": {
+                "impact": {
+                    "type": "string",
+                    "enum": ["improved", "neutral", "degraded", "unknown"]
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "metric": {"type": "string"},
+                            "before": {"type": "number"},
+                            "after": {"type": "number"},
+                            "change_percentage": {"type": "number"}
+                        }
+                    }
+                }
+            }
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Additional metadata",
+            "properties": {
+                "generated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "generation_time_seconds": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "ai_model": {
+                    "type": "string"
+                },
+                "git_commit": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{40}$"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "author": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "additionalProperties": false
+}

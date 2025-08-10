@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Api\ArtifactController;
+use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Webhooks\GithubWebhookController;
 use App\Http\Controllers\Webhooks\JiraWebhookController;
 use Illuminate\Http\Request;
@@ -69,3 +72,44 @@ Route::get('/health', function () {
         ],
     ]);
 })->name('health');
+
+/*
+|--------------------------------------------------------------------------
+| API Management Routes
+|--------------------------------------------------------------------------
+|
+| Routes for managing projects, workflows, and artifacts.
+|
+*/
+
+// Authenticated API routes
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
+    // Project management
+    Route::apiResource('projects', ProjectController::class);
+    Route::post('projects/{project}/regenerate-secrets', [ProjectController::class, 'regenerateSecrets'])
+        ->name('projects.regenerate-secrets');
+    
+    // Workflow management
+    Route::post('workflows/start', [WorkflowController::class, 'start'])
+        ->name('workflows.start');
+    Route::get('workflows', [WorkflowController::class, 'index'])
+        ->name('workflows.index');
+    Route::get('workflows/statistics', [WorkflowController::class, 'statistics'])
+        ->name('workflows.statistics');
+    Route::get('workflows/{identifier}/status', [WorkflowController::class, 'status'])
+        ->name('workflows.status');
+    Route::get('workflows/{workflow}/artifacts', [WorkflowController::class, 'artifacts'])
+        ->name('workflows.artifacts');
+    Route::post('workflows/{workflow}/cancel', [WorkflowController::class, 'cancel'])
+        ->name('workflows.cancel');
+    Route::post('workflows/{workflow}/retry', [WorkflowController::class, 'retry'])
+        ->name('workflows.retry');
+    
+    // Artifact management
+    Route::get('artifacts/download', [ArtifactController::class, 'download'])
+        ->name('artifacts.download');
+    Route::get('artifacts/list', [ArtifactController::class, 'list'])
+        ->name('artifacts.list');
+    Route::post('artifacts/upload', [ArtifactController::class, 'upload'])
+        ->name('artifacts.upload');
+});
