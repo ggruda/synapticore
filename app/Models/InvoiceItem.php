@@ -18,9 +18,11 @@ class InvoiceItem extends Model
     protected $fillable = [
         'invoice_id',
         'description',
-        'seconds',
+        'quantity',
+        'unit',
         'unit_price',
-        'net_amount',
+        'amount',
+        'meta',
     ];
 
     /**
@@ -29,9 +31,10 @@ class InvoiceItem extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'seconds' => 'integer',
+        'quantity' => 'decimal:4',
         'unit_price' => 'decimal:2',
-        'net_amount' => 'decimal:2',
+        'amount' => 'decimal:2',
+        'meta' => 'array',
     ];
 
     /**

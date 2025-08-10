@@ -192,8 +192,132 @@ class JiraTicketProvider implements TicketProviderContract
         ?DateTimeInterface $startedAt = null,
         ?string $comment = null
     ): void {
-        // TODO: Implement worklog addition via Jira API
-        throw new NotImplementedException('JiraTicketProvider::addWorklog() not yet implemented');
+        // Jira requires time in seconds, but displays in a format like "1h 30m"
+        // Minimum worklog time in Jira is typically 60 seconds (1 minute)
+        if ($seconds < 60) {
+            Log::warning('Worklog time too short for Jira, adjusting to 1 minute', [
+                'issue' => $externalKey,
+                'original_seconds' => $seconds,
+            ]);
+            $seconds = 60;
+        }
+
+        // Prepare the worklog data
+        $worklogData = [
+            'timeSpentSeconds' => $seconds,
+        ];
+
+        // Add start time if provided (Jira expects ISO 8601 format)
+        if ($startedAt !== null) {
+            // Convert to ISO 8601 with timezone
+            $started = $startedAt instanceof \Carbon\Carbon
+                ? $startedAt
+                : \Carbon\Carbon::parse($startedAt);
+
+            $worklogData['started'] = $started->format('Y-m-d\TH:i:s.vO');
+        }
+
+        // Add comment if provided
+        if ($comment !== null) {
+            $worklogData['comment'] = $comment;
+        }
+
+        $maxRetries = 3;
+        $retryDelay = 1; // Start with 1 second
+
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $response = Http::withBasicAuth($this->username, $this->token)
+                    ->timeout(30)
+                    ->post("{$this->url}/rest/api/2/issue/{$externalKey}/worklog", $worklogData);
+
+                if ($response->successful()) {
+                    Log::info('Successfully added worklog to Jira', [
+                        'issue' => $externalKey,
+                        'seconds' => $seconds,
+                        'formatted' => $this->formatTimeForJira($seconds),
+                        'attempt' => $attempt,
+                        'worklog_id' => $response->json('id'),
+                    ]);
+
+                    return;
+                }
+
+                // Check if it's a retryable error
+                if ($response->status() >= 500 || $response->status() === 429) {
+                    if ($attempt < $maxRetries) {
+                        Log::warning('Retryable error adding worklog to Jira', [
+                            'issue' => $externalKey,
+                            'attempt' => $attempt,
+                            'status' => $response->status(),
+                            'error' => $response->body(),
+                        ]);
+
+                        // Exponential backoff
+                        sleep($retryDelay);
+                        $retryDelay *= 2;
+
+                        continue;
+                    }
+                }
+
+                // Non-retryable error
+                throw new ProviderConnectionException(
+                    "Failed to add worklog to Jira issue {$externalKey}: ".
+                    "HTTP {$response->status()} - {$response->body()}"
+                );
+
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                // Network error - retry if attempts remain
+                if ($attempt < $maxRetries) {
+                    Log::warning('Network error adding worklog to Jira, retrying...', [
+                        'issue' => $externalKey,
+                        'attempt' => $attempt,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    sleep($retryDelay);
+                    $retryDelay *= 2;
+
+                    continue;
+                }
+
+                throw new ProviderConnectionException(
+                    "Network error adding worklog to Jira issue {$externalKey}: ".$e->getMessage(),
+                    0,
+                    $e
+                );
+            }
+        }
+
+        // If we get here, all retries failed
+        throw new ProviderConnectionException(
+            "Failed to add worklog to Jira issue {$externalKey} after {$maxRetries} attempts"
+        );
+    }
+
+    /**
+     * Format time duration for Jira display.
+     */
+    private function formatTimeForJira(int $seconds): string
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+
+        $parts = [];
+        if ($hours > 0) {
+            $parts[] = "{$hours}h";
+        }
+        if ($minutes > 0) {
+            $parts[] = "{$minutes}m";
+        }
+
+        // If less than a minute, show as 1m (minimum in Jira)
+        if (empty($parts)) {
+            return '1m';
+        }
+
+        return implode(' ', $parts);
     }
 
     /**

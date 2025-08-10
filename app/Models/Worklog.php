@@ -27,11 +27,16 @@ class Worklog extends Model
      */
     protected $fillable = [
         'ticket_id',
+        'user_id',
         'phase',
         'seconds',
         'started_at',
         'ended_at',
         'notes',
+        'status',
+        'synced_at',
+        'sync_status',
+        'sync_error',
     ];
 
     /**
@@ -44,6 +49,7 @@ class Worklog extends Model
         'seconds' => 'integer',
         'started_at' => 'datetime',
         'ended_at' => 'datetime',
+        'synced_at' => 'datetime',
     ];
 
     /**
@@ -52,5 +58,13 @@ class Worklog extends Model
     public function ticket(): BelongsTo
     {
         return $this->belongsTo(Ticket::class);
+    }
+
+    /**
+     * Get the user that owns the worklog.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

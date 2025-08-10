@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Jobs\RepairAttemptJob;
 use App\Models\Patch;
 use App\Models\Run;
 use App\Models\Ticket;
 use App\Services\SelfHealing\FailureCollector;
+use App\Services\Time\TrackedSection;
 use App\Services\WorkspaceRunner;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -53,6 +53,7 @@ class RunChecksJob implements ShouldQueue
      */
     public function handle(
         WorkspaceRunner $runner,
+        TrackedSection $tracker,
     ): void {
         Log::info('Starting checks for patch', [
             'ticket_id' => $this->ticket->id,
@@ -60,84 +61,86 @@ class RunChecksJob implements ShouldQueue
         ]);
 
         try {
-            $workspacePath = Storage::disk('local')->path('workspaces/'.$this->ticket->id.'/repo');
-            $profile = $this->ticket->project->language_profile ?? [];
-            $results = [];
+            // Track time for the testing phase
+            $tracker->run($this->ticket, 'test', function () use ($runner) {
+                $workspacePath = Storage::disk('local')->path('workspaces/'.$this->ticket->id.'/repo');
+                $profile = $this->ticket->project->language_profile ?? [];
+                $results = [];
 
-            // Run lint check
-            if (isset($profile['commands']['lint'])) {
-                $results['lint'] = $this->runCheck(
-                    'lint',
-                    $profile['commands']['lint'],
-                    $workspacePath,
-                    $runner
-                );
-            }
+                // Run lint check
+                if (isset($profile['commands']['lint'])) {
+                    $results['lint'] = $this->runCheck(
+                        'lint',
+                        $profile['commands']['lint'],
+                        $workspacePath,
+                        $runner
+                    );
+                }
 
-            // Run typecheck
-            if (isset($profile['commands']['typecheck'])) {
-                $results['typecheck'] = $this->runCheck(
-                    'typecheck',
-                    $profile['commands']['typecheck'],
-                    $workspacePath,
-                    $runner
-                );
-            }
+                // Run typecheck
+                if (isset($profile['commands']['typecheck'])) {
+                    $results['typecheck'] = $this->runCheck(
+                        'typecheck',
+                        $profile['commands']['typecheck'],
+                        $workspacePath,
+                        $runner
+                    );
+                }
 
-            // Run tests
-            if (isset($profile['commands']['test'])) {
-                $results['test'] = $this->runCheck(
-                    'test',
-                    $profile['commands']['test'],
-                    $workspacePath,
-                    $runner,
-                    generateCoverage: true
-                );
-            }
+                // Run tests
+                if (isset($profile['commands']['test'])) {
+                    $results['test'] = $this->runCheck(
+                        'test',
+                        $profile['commands']['test'],
+                        $workspacePath,
+                        $runner,
+                        generateCoverage: true
+                    );
+                }
 
-            // Check if all mandatory checks passed
-            $allPassed = true;
-            $mandatoryChecks = config('synaptic.policies.mandatory_checks', []);
-            $failedChecks = [];
+                // Check if all mandatory checks passed
+                $allPassed = true;
+                $mandatoryChecks = config('synaptic.policies.mandatory_checks', []);
+                $failedChecks = [];
 
-            foreach ($mandatoryChecks as $check => $required) {
-                if ($required && (! isset($results[$check]) || $results[$check]['status'] !== 'passed')) {
-                    $allPassed = false;
-                    $failedChecks[] = $check;
-                    Log::warning('Mandatory check failed', [
-                        'check' => $check,
-                        'status' => $results[$check]['status'] ?? 'not_run',
+                foreach ($mandatoryChecks as $check => $required) {
+                    if ($required && (! isset($results[$check]) || $results[$check]['status'] !== 'passed')) {
+                        $allPassed = false;
+                        $failedChecks[] = $check;
+                        Log::warning('Mandatory check failed', [
+                            'check' => $check,
+                            'status' => $results[$check]['status'] ?? 'not_run',
+                        ]);
+                    }
+                }
+
+                // If checks failed, attempt self-healing
+                if (! $allPassed && ! empty($failedChecks)) {
+                    $this->attemptSelfHealing($failedChecks, $results);
+                }
+
+                // Update workflow state
+                if ($this->ticket->workflow) {
+                    $this->ticket->workflow->update([
+                        'state' => 'TESTING',
+                        'meta' => array_merge($this->ticket->workflow->meta ?? [], [
+                            'checks_completed_at' => now()->toIso8601String(),
+                            'checks_passed' => $allPassed,
+                            'check_results' => $results,
+                        ]),
                     ]);
                 }
-            }
 
-            // If checks failed, attempt self-healing
-            if (!$allPassed && !empty($failedChecks)) {
-                $this->attemptSelfHealing($failedChecks, $results);
-            }
-
-            // Update workflow state
-            if ($this->ticket->workflow) {
-                $this->ticket->workflow->update([
-                    'state' => 'TESTING',
-                    'meta' => array_merge($this->ticket->workflow->meta ?? [], [
-                        'checks_completed_at' => now()->toIso8601String(),
-                        'checks_passed' => $allPassed,
-                        'check_results' => $results,
-                    ]),
+                Log::info('Checks completed', [
+                    'ticket_id' => $this->ticket->id,
+                    'all_passed' => $allPassed,
+                    'results' => array_map(fn ($r) => $r['status'] ?? 'unknown', $results),
                 ]);
-            }
 
-            Log::info('Checks completed', [
-                'ticket_id' => $this->ticket->id,
-                'all_passed' => $allPassed,
-                'results' => array_map(fn ($r) => $r['status'] ?? 'unknown', $results),
-            ]);
-
-            // Dispatch next job
-            ReviewPatchJob::dispatch($this->ticket, $this->patch, $allPassed)
-                ->delay(now()->addSeconds(5));
-
+                // Dispatch next job
+                ReviewPatchJob::dispatch($this->ticket, $this->patch, $allPassed)
+                    ->delay(now()->addSeconds(5));
+            }, 'Running tests and checks on implementation');
         } catch (\Exception $e) {
             Log::error('Checks failed', [
                 'ticket_id' => $this->ticket->id,
@@ -403,10 +406,10 @@ class RunChecksJob implements ShouldQueue
             // Create failure bundle and dispatch repair job
             try {
                 $failureCollector = app(FailureCollector::class);
-                
+
                 // Create a synthetic exception for the check failures
                 $exception = new \Exception(
-                    'Checks failed: ' . implode(', ', $failedChecks)
+                    'Checks failed: '.implode(', ', $failedChecks)
                 );
 
                 $bundlePath = $failureCollector->captureFailure(

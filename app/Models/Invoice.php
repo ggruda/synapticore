@@ -24,15 +24,20 @@ class Invoice extends Model
      */
     protected $fillable = [
         'project_id',
+        'invoice_number',
         'period_start',
         'period_end',
+        'due_date',
         'currency',
-        'net_total',
+        'subtotal',
         'tax_rate',
-        'gross_total',
-        'number',
+        'tax_amount',
+        'total',
+        'notes',
         'status',
         'pdf_path',
+        'pdf_generated_at',
+        'sent_at',
         'meta',
     ];
 
@@ -44,10 +49,14 @@ class Invoice extends Model
     protected $casts = [
         'period_start' => 'date',
         'period_end' => 'date',
-        'net_total' => 'decimal:2',
-        'tax_rate' => 'decimal:2',
-        'gross_total' => 'decimal:2',
+        'due_date' => 'date',
+        'subtotal' => 'decimal:2',
+        'tax_rate' => 'decimal:4',
+        'tax_amount' => 'decimal:2',
+        'total' => 'decimal:2',
         'status' => 'string',
+        'pdf_generated_at' => 'datetime',
+        'sent_at' => 'datetime',
         'meta' => 'array',
     ];
 

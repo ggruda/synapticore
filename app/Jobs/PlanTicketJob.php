@@ -11,6 +11,7 @@ use App\Models\Plan;
 use App\Models\Ticket;
 use App\Services\Context\EmbeddingIndexer;
 use App\Services\Tickets\TicketCommentFormatter;
+use App\Services\Time\TrackedSection;
 use App\Services\Validation\SchemaValidator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -57,6 +58,7 @@ class PlanTicketJob implements ShouldQueue
         TicketProviderContract $ticketProvider,
         EmbeddingIndexer $embeddingIndexer,
         SchemaValidator $validator,
+        TrackedSection $tracker,
     ): void {
         Log::info('Starting plan generation for ticket', [
             'ticket_id' => $this->ticket->id,
@@ -64,87 +66,89 @@ class PlanTicketJob implements ShouldQueue
         ]);
 
         try {
-            // Build RAG context using embeddings
-            $context = $this->buildRagContext($embeddingIndexer);
+            // Track time for the planning phase
+            $tracker->run($this->ticket, 'plan', function () use ($planner, $ticketProvider, $embeddingIndexer, $validator) {
+                // Build RAG context using embeddings
+                $context = $this->buildRagContext($embeddingIndexer);
 
-            // Prepare planning input
-            $input = new PlanningInputDto(
-                ticket: $this->ticket->toDto(),
-                context: $context,
-            );
+                // Prepare planning input
+                $input = new PlanningInputDto(
+                    ticket: $this->ticket->toDto(),
+                    context: $context,
+                );
 
-            // Generate plan using AI
-            $planJson = $planner->plan($input);
+                // Generate plan using AI
+                $planJson = $planner->plan($input);
 
-            // Convert to array for validation
-            $planData = [
-                'version' => '1.0',
-                'ticket_id' => $this->ticket->external_key,
-                'summary' => $planJson->summary ?? 'Implementation plan for '.$this->ticket->title,
-                'estimated_hours' => $planJson->estimatedHours,
-                'risk_level' => $planJson->risk,
-                'test_strategy' => $planJson->testStrategy,
-                'steps' => array_map(function ($step, $index) {
-                    return [
-                        'id' => $step['id'] ?? "step_{$index}",
-                        'intent' => $step['intent'] ?? 'modify',
-                        'targets' => $step['targets'] ?? [],
-                        'rationale' => $step['rationale'] ?? 'Step required for implementation',
-                        'acceptance' => $step['acceptance'] ?? ['Step completed successfully'],
-                        'estimated_minutes' => $step['estimated_minutes'] ?? 30,
-                        'dependencies' => $step['dependencies'] ?? [],
-                        'risk_factors' => $step['risk_factors'] ?? [],
-                    ];
-                }, $planJson->steps, array_keys($planJson->steps)),
-                'files_affected' => $planJson->filesAffected,
-                'prerequisites' => [
-                    'dependencies' => $planJson->dependencies,
-                ],
-                'metadata' => array_merge($planJson->metadata, [
-                    'created_at' => now()->toIso8601String(),
-                    'context_items' => count($context),
-                ]),
-            ];
-
-            // Validate against schema
-            $validationResult = $validator->validatePlan($planData);
-
-            // Store plan
-            $plan = Plan::updateOrCreate(
-                ['ticket_id' => $this->ticket->id],
-                [
-                    'plan_json' => $planData,
-                    'risk' => $planJson->risk,
+                // Convert to array for validation
+                $planData = [
+                    'version' => '1.0',
+                    'ticket_id' => $this->ticket->external_key,
+                    'summary' => $planJson->summary ?? 'Implementation plan for '.$this->ticket->title,
+                    'estimated_hours' => $planJson->estimatedHours,
+                    'risk_level' => $planJson->risk,
                     'test_strategy' => $planJson->testStrategy,
-                ]
-            );
-
-            Log::info('Plan generated and stored', [
-                'ticket_id' => $this->ticket->id,
-                'plan_id' => $plan->id,
-                'risk' => $plan->risk,
-                'steps' => count($planData['steps']),
-            ]);
-
-            // Post plan as comment if enabled
-            if ($this->postComment && config('synaptic.tickets.post_plan_comment')) {
-                $this->postPlanComment($ticketProvider, $plan);
-            }
-
-            // Update workflow state
-            if ($this->ticket->workflow) {
-                $this->ticket->workflow->update([
-                    'state' => 'PLANNED',
-                    'meta' => array_merge($this->ticket->workflow->meta ?? [], [
-                        'plan_generated_at' => now()->toIso8601String(),
-                        'plan_validation' => $validationResult->toArray(),
+                    'steps' => array_map(function ($step, $index) {
+                        return [
+                            'id' => $step['id'] ?? "step_{$index}",
+                            'intent' => $step['intent'] ?? 'modify',
+                            'targets' => $step['targets'] ?? [],
+                            'rationale' => $step['rationale'] ?? 'Step required for implementation',
+                            'acceptance' => $step['acceptance'] ?? ['Step completed successfully'],
+                            'estimated_minutes' => $step['estimated_minutes'] ?? 30,
+                            'dependencies' => $step['dependencies'] ?? [],
+                            'risk_factors' => $step['risk_factors'] ?? [],
+                        ];
+                    }, $planJson->steps, array_keys($planJson->steps)),
+                    'files_affected' => $planJson->filesAffected,
+                    'prerequisites' => [
+                        'dependencies' => $planJson->dependencies,
+                    ],
+                    'metadata' => array_merge($planJson->metadata, [
+                        'created_at' => now()->toIso8601String(),
+                        'context_items' => count($context),
                     ]),
+                ];
+
+                // Validate against schema
+                $validationResult = $validator->validatePlan($planData);
+
+                // Store plan
+                $plan = Plan::updateOrCreate(
+                    ['ticket_id' => $this->ticket->id],
+                    [
+                        'plan_json' => $planData,
+                        'risk' => $planJson->risk,
+                        'test_strategy' => $planJson->testStrategy,
+                    ]
+                );
+
+                Log::info('Plan generated and stored', [
+                    'ticket_id' => $this->ticket->id,
+                    'plan_id' => $plan->id,
+                    'risk' => $plan->risk,
+                    'steps' => count($planData['steps']),
                 ]);
-            }
 
-            // Dispatch next job in pipeline
-            ImplementPlanJob::dispatch($this->ticket, $plan)->delay(now()->addSeconds(5));
+                // Post plan as comment if enabled
+                if ($this->postComment && config('synaptic.tickets.post_plan_comment')) {
+                    $this->postPlanComment($ticketProvider, $plan);
+                }
 
+                // Update workflow state
+                if ($this->ticket->workflow) {
+                    $this->ticket->workflow->update([
+                        'state' => 'PLANNED',
+                        'meta' => array_merge($this->ticket->workflow->meta ?? [], [
+                            'plan_generated_at' => now()->toIso8601String(),
+                            'plan_validation' => $validationResult->toArray(),
+                        ]),
+                    ]);
+                }
+
+                // Dispatch next job in pipeline
+                ImplementPlanJob::dispatch($this->ticket, $plan)->delay(now()->addSeconds(5));
+            }, 'Generating implementation plan for ticket');
         } catch (\Exception $e) {
             Log::error('Plan generation failed', [
                 'ticket_id' => $this->ticket->id,
