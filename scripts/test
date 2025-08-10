@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+echo "🧪 Running tests..."
+
+# Run PHPUnit tests
+if [ -z "$1" ]; then
+    docker compose -f infra/compose/docker-compose.yml exec app php artisan test
+else
+    docker compose -f infra/compose/docker-compose.yml exec app php artisan test "$@"
+fi

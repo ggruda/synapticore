@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+echo "🛑 Stopping Synapticore Development Environment..."
+
+# Stop all services
+docker compose -f infra/compose/docker-compose.yml down
+
+echo "✅ All services stopped!"

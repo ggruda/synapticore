@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+# Check if service name is provided
+if [ -z "$1" ]; then
+    echo "📋 Showing logs for all services (use Ctrl+C to exit)..."
+    docker compose -f infra/compose/docker-compose.yml logs -f
+else
+    echo "📋 Showing logs for service: $1 (use Ctrl+C to exit)..."
+    docker compose -f infra/compose/docker-compose.yml logs -f "$1"
+fi

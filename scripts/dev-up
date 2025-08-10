@@ -1,0 +1,64 @@
+#!/bin/bash
+set -e
+
+echo "🚀 Starting Synapticore Development Environment..."
+
+# Check if .env exists, if not copy from .env.example
+if [ ! -f .env ]; then
+    echo "📝 Creating .env file from .env.example..."
+    cp .env.example .env
+    
+    # Generate app key
+    echo "🔑 Generating application key..."
+    docker compose -f infra/compose/docker-compose.yml run --rm app php artisan key:generate
+fi
+
+# Start all services
+echo "🐳 Starting Docker containers..."
+docker compose -f infra/compose/docker-compose.yml up -d
+
+# Wait for database to be ready
+echo "⏳ Waiting for database to be ready..."
+sleep 10
+
+# Run migrations
+echo "📊 Running database migrations..."
+docker compose -f infra/compose/docker-compose.yml exec app php artisan migrate --force
+
+# Create storage link
+echo "🔗 Creating storage link..."
+docker compose -f infra/compose/docker-compose.yml exec app php artisan storage:link
+
+# Clear and cache config
+echo "🧹 Clearing and caching configuration..."
+docker compose -f infra/compose/docker-compose.yml exec app php artisan config:clear
+docker compose -f infra/compose/docker-compose.yml exec app php artisan cache:clear
+docker compose -f infra/compose/docker-compose.yml exec app php artisan route:clear
+docker compose -f infra/compose/docker-compose.yml exec app php artisan view:clear
+
+# Install composer dependencies if needed
+if [ ! -d "vendor" ]; then
+    echo "📦 Installing Composer dependencies..."
+    docker compose -f infra/compose/docker-compose.yml exec app composer install
+fi
+
+# Install npm dependencies if needed
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing NPM dependencies..."
+    docker compose -f infra/compose/docker-compose.yml exec app npm ci
+fi
+
+# Build assets
+echo "🎨 Building frontend assets..."
+docker compose -f infra/compose/docker-compose.yml exec app npm run build
+
+echo "✅ Development environment is ready!"
+echo ""
+echo "🌐 Application: http://localhost:8080"
+echo "📧 Mailpit: http://localhost:8030"
+echo "📊 Grafana: http://localhost:3000 (admin/admin)"
+echo "🗄️ MinIO: http://localhost:9001 (minioadmin/minioadmin123)"
+echo "📈 Prometheus: http://localhost:9090"
+echo ""
+echo "Run 'scripts/dev-logs' to view logs"
+echo "Run 'scripts/dev-down' to stop all services"

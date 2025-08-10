@@ -1,0 +1,30 @@
+#!/bin/bash
+set -e
+
+echo "🔍 Running code linting..."
+
+# Check if PHP CodeSniffer is installed
+if docker compose -f infra/compose/docker-compose.yml exec app which phpcs > /dev/null 2>&1; then
+    echo "Running PHP CodeSniffer..."
+    docker compose -f infra/compose/docker-compose.yml exec app phpcs --standard=PSR12 app/ config/ database/ routes/ tests/
+else
+    echo "⚠️  PHP CodeSniffer not installed. Install it with: composer require --dev squizlabs/php_codesniffer"
+fi
+
+# Check if PHPStan is installed
+if docker compose -f infra/compose/docker-compose.yml exec app which phpstan > /dev/null 2>&1; then
+    echo "Running PHPStan..."
+    docker compose -f infra/compose/docker-compose.yml exec app phpstan analyse
+else
+    echo "⚠️  PHPStan not installed. Install it with: composer require --dev phpstan/phpstan"
+fi
+
+# Run Laravel Pint if available
+if [ -f "vendor/bin/pint" ]; then
+    echo "Running Laravel Pint (dry-run)..."
+    docker compose -f infra/compose/docker-compose.yml exec app ./vendor/bin/pint --test
+else
+    echo "⚠️  Laravel Pint not installed. Install it with: composer require --dev laravel/pint"
+fi
+
+echo "✅ Linting complete!"

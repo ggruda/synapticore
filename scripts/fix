@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+echo "🔧 Fixing code style issues..."
+
+# Run PHP CS Fixer if available
+if docker compose -f infra/compose/docker-compose.yml exec app which php-cs-fixer > /dev/null 2>&1; then
+    echo "Running PHP CS Fixer..."
+    docker compose -f infra/compose/docker-compose.yml exec app php-cs-fixer fix
+fi
+
+# Run Laravel Pint if available
+if [ -f "vendor/bin/pint" ]; then
+    echo "Running Laravel Pint..."
+    docker compose -f infra/compose/docker-compose.yml exec app ./vendor/bin/pint
+else
+    echo "⚠️  Laravel Pint not installed. Install it with: composer require --dev laravel/pint"
+fi
+
+echo "✅ Code style fixed!"

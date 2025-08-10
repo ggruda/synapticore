@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+
+echo "🎨 Formatting code..."
+
+# Format PHP code
+echo "Formatting PHP code..."
+if [ -f "vendor/bin/pint" ]; then
+    docker compose -f infra/compose/docker-compose.yml exec app ./vendor/bin/pint
+else
+    echo "⚠️  Laravel Pint not installed. Install it with: composer require --dev laravel/pint"
+fi
+
+# Format JavaScript/TypeScript code
+echo "Formatting JavaScript/TypeScript code..."
+if [ -f "package.json" ]; then
+    if docker compose -f infra/compose/docker-compose.yml exec app npm list prettier > /dev/null 2>&1; then
+        docker compose -f infra/compose/docker-compose.yml exec app npx prettier --write "resources/**/*.{js,jsx,ts,tsx,vue,css,scss}"
+    else
+        echo "⚠️  Prettier not installed. Install it with: npm install --save-dev prettier"
+    fi
+fi
+
+# Format Blade templates
+echo "Formatting Blade templates..."
+if docker compose -f infra/compose/docker-compose.yml exec app which blade-formatter > /dev/null 2>&1; then
+    docker compose -f infra/compose/docker-compose.yml exec app blade-formatter --write resources/views/
+else
+    echo "⚠️  Blade formatter not installed. Install it with: npm install --save-dev blade-formatter"
+fi
+
+echo "✅ Code formatting complete!"
