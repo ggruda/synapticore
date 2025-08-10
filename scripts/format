@@ -3,13 +3,9 @@ set -e
 
 echo "🎨 Formatting code..."
 
-# Format PHP code
-echo "Formatting PHP code..."
-if [ -f "vendor/bin/pint" ]; then
-    docker compose -f infra/compose/docker-compose.yml exec app ./vendor/bin/pint
-else
-    echo "⚠️  Laravel Pint not installed. Install it with: composer require --dev laravel/pint"
-fi
+# Format PHP code with Laravel Pint
+echo "Formatting PHP code with Laravel Pint..."
+docker compose -f infra/compose/docker-compose.yml exec app ./vendor/bin/pint
 
 # Format JavaScript/TypeScript code
 echo "Formatting JavaScript/TypeScript code..."
